@@ -14,10 +14,7 @@ import mainclasses.user.Employee;
 
 import javax.swing.*;
 import java.io.IOException;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.ArrayList;
 
 /**
@@ -92,14 +89,9 @@ public class ProjectDB {
      * Permite cargar un ResultSet con los datos de la bbdd en el arraylist de esta clase
      */
     private void getProjectsTable() {
-        String sql = "SELECT p.idproject, p.title, p.description, u.iduser, u.username, u.dni, u.nss, u.employeeid " +
-                     "FROM projects AS p " +
-                     "INNER JOIN user_projects AS up " +
-                     "ON p.idproject = up.idproject " +
-                     "INNER JOIN users AS u " +
-                     "ON up.iduser = u.iduser " +
-                     "WHERE p.status = 'active' " +
-                     "ORDER BY p.idproject ASC";
+        String sql = "SELECT idproject, title, description, iduser, username, dni, nss, employeeid " +
+                     "FROM v_projects_table " +
+                     "ORDER BY idproject ASC";
 
         String title, description, userName, dni, nss, employeeId;
         int idProject, idUser;
@@ -143,8 +135,8 @@ public class ProjectDB {
         // Panel con formulario y comboBox
         ProjectDialog projectDialog = new ProjectDialog(title, description, idProposal);
 
-        String sqlFirst = "INSERT INTO projects (idproject, title, description, creationdate, updated_at, status) VALUES (?,?,?,?,?,?)";
-        String sqlSecond = "INSERT INTO user_projects (iduser, idproject) VALUES (?,?)";
+        String sqlFirst = "{ call ADD_PROJECT(?,?,?) }";
+        String sqlSecond = "{ call ADD_USER_PROJECT(?,?) }";
 
         // Almacena un entero, necesario para Diálogo de confirmación
         int resultado;
@@ -167,19 +159,16 @@ public class ProjectDB {
                 // No se puede utilizar un listener si utilizamos show****Dialog
                 if (resultado == 0) {
                     // Primera consulta inserta en tabla Proyectos
-                    try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sqlFirst)) {
+                    try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sqlFirst)) {
                         stmt.setInt(1, InputOutput.stringToInt(idProposal));
                         stmt.setString(2, title);
                         stmt.setString(3, description);
-                        stmt.setString(4, InputOutput.todayDate());
-                        stmt.setString(5, InputOutput.todayDate());
-                        stmt.setString(6, "active");
 
                         stmt.executeUpdate();
                     }
 
                     // Segunda consulta inserta en tabla intermedia
-                    try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sqlSecond)) {
+                    try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sqlSecond)) {
                         stmt.setInt(1, projectDialog.getCbEmployee().getIdUser());
                         stmt.setInt(2, InputOutput.stringToInt(projectDialog.getTxtIdProposal()));
 

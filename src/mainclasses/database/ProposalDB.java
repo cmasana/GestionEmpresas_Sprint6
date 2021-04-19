@@ -13,10 +13,7 @@ import mainclasses.entity.School;
 import mainclasses.proposal.Proposal;
 
 import javax.swing.*;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -171,10 +168,9 @@ public class ProposalDB {
      * @param entity        entidad de la propuesta
      */
     public void createProposal(JTable proposalTable, String title, String description, String startDate, int entity) {
-        String sql = "INSERT INTO proposals (title, description, startdate, creationdate, updated_at, status, identity) " +
-                "VALUES (?,?,?,?,?,?,?)";
+        String sql = "{ call ADD_PROPOSAL(?,?,?,?) }";
 
-        try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sql)) {
+        try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sql)) {
             // Si hay algún campo vacío
             if (title.isEmpty() || description.isEmpty() || startDate.isEmpty() || entity == 0) {
                 throw new CustomException(1111);
@@ -188,10 +184,7 @@ public class ProposalDB {
                     stmt.setString(1, title);
                     stmt.setString(2, description);
                     stmt.setString(3, startDate);
-                    stmt.setString(4, InputOutput.todayDate());
-                    stmt.setString(5, InputOutput.todayDate());
-                    stmt.setString(6, "active");
-                    stmt.setObject(7, entity);
+                    stmt.setObject(4, entity);
 
                     stmt.executeUpdate();
 
@@ -206,14 +199,14 @@ public class ProposalDB {
             InputOutput.printAlert(ce.getMessage());
 
             // Capturamos error para el registro
-            auxiliar.Error.capturarError("PROPOSAL " + ce.getMessage());
+            Error.capturarError("PROPOSAL " + ce.getMessage());
 
         } catch (ParseException pe) {
             String alerta = "Error: Fecha con formato desconocido";
             InputOutput.printAlert(alerta);
 
             // Capturamos error para el registro
-            auxiliar.Error.capturarError("PROPOSAL " + alerta);
+            Error.capturarError("PROPOSAL " + alerta);
 
         } catch (SQLException throwables) {
             throwables.printStackTrace();
@@ -231,20 +224,18 @@ public class ProposalDB {
      * @param indexEntity   indice del objeto del JCombobox
      */
     public void editProposal(JTable proposalTable, String title, String description, String startDate, int indexEntity, String idProposal) {
-        String sql = "UPDATE proposals SET title = ?, description = ?, startDate = ?, updated_at = ?, identity = ? WHERE idproposal = ?";
-        String sqlGetDate = "SELECT creationdate FROM proposals WHERE idproposal = ?";
+        String sql = "{ call UPDATE_PROPOSAL(?,?,?,?,?) }";
+        String sqlGetDate = "{ ? = call PROP_GET_CREATIONDATE(?) }";
 
         int resultado;
-        Date creationDate = null;
 
+        try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sqlGetDate)) {
+            stmt.registerOutParameter(1, Types.DATE);
+            stmt.setInt(2, InputOutput.stringToInt(idProposal));
 
-        try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sqlGetDate)) {
-            stmt.setString(1, idProposal);
+            stmt.execute();
 
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                creationDate = rs.getDate("creationdate");
-            }
+            Date creationDate = stmt.getDate(1);
 
             // Almacenamos el nº total de filas que hay en la tabla
             int totalRows = proposalTable.getRowCount();
@@ -273,18 +264,16 @@ public class ProposalDB {
                 resultado = InputOutput.editConfirmation();
 
                 if (InputOutput.ifOk(resultado)) {
-                    try (PreparedStatement pStmt = DatabaseConnection.getConnection().prepareStatement(sql)) {
+                    try (CallableStatement pStmt = DatabaseConnection.getConnection().prepareCall(sql)) {
 
                         pStmt.setString(1, title);
                         pStmt.setString(2, description);
                         pStmt.setString(3, startDate);
-                        pStmt.setString(4, InputOutput.todayDate());
-                        pStmt.setInt(5, indexEntity);
+                        pStmt.setInt(4, indexEntity);
 
-                        pStmt.setInt(6, InputOutput.stringToInt(idProposal));
+                        pStmt.setInt(5, InputOutput.stringToInt(idProposal));
 
                         pStmt.executeUpdate();
-                        //stmt.close(); // No hace falta con el try-with-resources
 
                         // Añadimos la entrada al log
                         Log.capturarRegistro("PROPOSAL EDIT " + title + " "
@@ -294,7 +283,6 @@ public class ProposalDB {
 
                         // Actualizamos datos de la tabla
                         showData(proposalTable);
-
                     }
                 }
             }
@@ -302,7 +290,7 @@ public class ProposalDB {
             InputOutput.printAlert(ce.getMessage());
 
             // Capturamos error para el registro
-            auxiliar.Error.capturarError("PROPOSAL " + ce.getMessage());
+            Error.capturarError("PROPOSAL " + ce.getMessage());
         } catch (ParseException e) {
             InputOutput.printAlert("Error: La fecha introducida no es válida");
         }
@@ -320,7 +308,7 @@ public class ProposalDB {
      * @param idProposal    id de la propuesta
      */
     public void softDeleteProposal(JTable proposalTable, String title, String description, String startDate, int indexEntity, String idProposal) {
-        String sql = "UPDATE proposals SET updated_at = ?, status = ? WHERE idproposal = ?";
+        String sql = "{ call DELETE_PROPOSAL(?) }";
         int resultado;
 
         try {
@@ -347,12 +335,9 @@ public class ProposalDB {
                 resultado = InputOutput.deleteConfirmation();
 
                 if (InputOutput.ifOk(resultado)) {
-                    try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sql)) {
+                    try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sql)) {
 
-                        stmt.setString(1, InputOutput.todayDate());
-                        stmt.setString(2, "inactive");
-
-                        stmt.setInt(3, InputOutput.stringToInt(idProposal));
+                        stmt.setInt(1, InputOutput.stringToInt(idProposal));
 
                         stmt.executeUpdate();
                         //stmt.close(); // No hace falta con el try-with-resources
@@ -392,14 +377,11 @@ public class ProposalDB {
         // Almacena el nº de fila seleccionado
         int selectedRow = proposalTable.getSelectedRow();
 
-        String sql = "UPDATE proposals SET updated_at = ?, status = ? WHERE idproposal = ?";
+        String sql = "{ call PROPOSAL_TO_PROJECT(?) }";
 
         if (selectedRow >= 0) {
-            try (PreparedStatement stmt = DatabaseConnection.getConnection().prepareStatement(sql)) {
-                stmt.setString(1, InputOutput.todayDate());
-                stmt.setString(2, "in-progress");
-
-                stmt.setInt(3, InputOutput.stringToInt(idProposal));
+            try (CallableStatement stmt = DatabaseConnection.getConnection().prepareCall(sql)) {
+                stmt.setInt(1, InputOutput.stringToInt(idProposal));
 
                 stmt.executeUpdate();
 
