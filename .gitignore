@@ -1,2 +1,5 @@
 # Production folders
 out/
+# Log & Error files
+error.txt
+log.txt
